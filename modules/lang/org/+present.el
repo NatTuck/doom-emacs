@@ -44,6 +44,6 @@
 ;;
 
 (after! org
-  (require 'ox-reveal)
+  ;(require 'ox-reveal)
   (map! :map org-mode-map "<f8>" #'+org-present/start))
 
