@@ -1,6 +1,6 @@
 ;;; ui/zen/config.el -*- lexical-binding: t; -*-
 
-(defvar +zen-mixed-pitch-modes '(markdown-mode org-mode)
+(defvar +zen-mixed-pitch-modes '(markdown-mode org-mode org-journal-mode)
   "What major-modes to enable `mixed-pitch-mode' in with `writeroom-mode'.")
 
 (defvar +zen-text-scale 2
@@ -48,17 +48,7 @@
             'org-todo-keyword-kill
             'org-todo-keyword-outd
             'org-todo
-            'org-indent
+            'org-done
             'font-lock-comment-face
             'line-number
-            'line-number-current-line)
-
-  ;; See https://gitlab.com/jabranham/mixed-pitch/issues/6#note_79691741
-  (defadvice! +zen--fix-scaled-fixed-pitch-faces-a (orig-fn &rest args)
-    :around #'mixed-pitch-mode
-    (cl-letf* ((old-face-remap-add-relative (symbol-function #'face-remap-add-relative))
-               ((symbol-function #'face-remap-add-relative)
-                (lambda (face &rest specs)
-                  (funcall old-face-remap-add-relative
-                           face (doom-plist-delete specs :height)))))
-      (apply orig-fn args))))
+            'line-number-current-line))

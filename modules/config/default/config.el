@@ -1,19 +1,22 @@
 ;;; config/default/config.el -*- lexical-binding: t; -*-
 
+(defvar +default-want-RET-continue-comments t
+  "If non-nil, RET will continue commented lines.")
+
 (defvar +default-minibuffer-maps
-  `(minibuffer-local-map
-    minibuffer-local-ns-map
-    minibuffer-local-completion-map
-    minibuffer-local-must-match-map
-    minibuffer-local-isearch-map
-    read-expression-map
-    ,@(cond ((featurep! :completion ivy)
-             '(ivy-minibuffer-map
-               ivy-switch-buffer-map))
-            ((featurep! :completion helm)
-             '(helm-map
-               helm-ag-map
-               helm-read-file-map))))
+  (append '(minibuffer-local-map
+            minibuffer-local-ns-map
+            minibuffer-local-completion-map
+            minibuffer-local-must-match-map
+            minibuffer-local-isearch-map
+            read-expression-map)
+          (cond ((featurep! :completion ivy)
+                 '(ivy-minibuffer-map
+                   ivy-switch-buffer-map))
+                ((featurep! :completion helm)
+                 '(helm-map
+                   helm-ag-map
+                   helm-read-file-map))))
   "A list of all the keymaps used for the minibuffer.")
 
 
@@ -31,8 +34,11 @@
 (after! epa
   ;; With GPG 2.1+, this forces gpg-agent to use the Emacs minibuffer to prompt
   ;; for the key passphrase.
-  (setq epa-pinentry-mode 'loopback)
-   ;; Default to the first secret key available in your keyring.
+  (set (if EMACS27+
+           'epg-pinentry-mode
+         'epa-pinentry-mode) ; DEPRECATED `epa-pinentry-mode'
+       'loopback)
+  ;; Default to the first secret key available in your keyring.
   (setq-default
    epa-file-encrypt-to
    (or (default-value 'epa-file-encrypt-to)
@@ -71,11 +77,6 @@
   ;; or specific :post-handlers with:
   ;;   (sp-pair "{" nil :post-handlers '(:rem ("| " "SPC")))
   (after! smartparens
-    ;; Smartparens is broken in `cc-mode' as of Emacs 27. See
-    ;; https://github.com/Fuco1/smartparens/issues/963.
-    (unless EMACS27+
-      (pushnew! sp--special-self-insert-commands 'c-electric-paren 'c-electric-brace))
-
     ;; Smartparens' navigation feature is neat, but does not justify how
     ;; expensive it is. It's also less useful for evil users. This may need to
     ;; be reactivated for non-evil users though. Needs more testing!
@@ -106,9 +107,12 @@
     (sp-local-pair sp-lisp-modes "(" ")" :unless '(:rem sp-point-before-same-p))
 
     ;; Major-mode specific fixes
-    (sp-local-pair '(ruby-mode enh-ruby-mode) "{" "}"
+    (sp-local-pair 'ruby-mode "{" "}"
                    :pre-handlers '(:rem sp-ruby-pre-handler)
                    :post-handlers '(:rem sp-ruby-post-handler))
+
+    ;; Don't eagerly escape Swift style string interpolation
+    (sp-local-pair 'swift-mode "\\(" ")" :when '(sp-in-string-p))
 
     ;; Don't do square-bracket space-expansion where it doesn't make sense to
     (sp-local-pair '(emacs-lisp-mode org-mode markdown-mode gfm-mode)
@@ -183,7 +187,7 @@
         (sp-local-pair "(*" "*)" :actions nil)
         (sp-local-pair "(*" "*"
                        :actions '(insert)
-                       :post-handlers '(("| " "SPC") ("|\n[i]*)[d-2]" "RET")))))
+                       :post-handlers '(("| " "SPC") ("|[i]*)[d-2]" "RET")))))
 
     (after! smartparens-markdown
       (sp-with-modes '(markdown-mode gfm-mode)
@@ -203,31 +207,51 @@
 
       ;; This keybind allows * to skip over **.
       (map! :map markdown-mode-map
-            :ig "*" (λ! (if (looking-at-p "\\*\\* *$")
-                            (forward-char 2)
-                          (call-interactively 'self-insert-command)))))
-
-    ;; Highjacks backspace to:
-    ;;  a) balance spaces inside brackets/parentheses ( | ) -> (|)
-    ;;  b) delete up to nearest column multiple of `tab-width' at a time
-    ;;  c) close empty multiline brace blocks in one step:
-    ;;     {
-    ;;     |
-    ;;     }
-    ;;     becomes {|}
-    ;;  d) refresh smartparens' :post-handlers, so SPC and RET expansions work
-    ;;     even after a backspace.
-    ;;  e) properly delete smartparen pairs when they are encountered, without
-    ;;     the need for strict mode.
-    ;;  f) do none of this when inside a string
-    (advice-add #'delete-backward-char :override #'+default--delete-backward-char-a))
-
-  ;; Makes `newline-and-indent' continue comments (and more reliably)
-  (advice-add #'newline-and-indent :override #'+default--newline-indent-and-continue-comments-a))
+            :ig "*" (general-predicate-dispatch nil
+                      (looking-at-p "\\*\\* *")
+                      (cmd! (forward-char 2)))))))
 
 
 ;;
 ;;; Keybinding fixes
+
+;; Highjacks backspace to delete up to nearest column multiple of `tab-width' at
+;; a time. If you have smartparens enabled, it will also:
+;;  a) balance spaces inside brackets/parentheses ( | ) -> (|)
+;;  b) close empty multiline brace blocks in one step:
+;;     {
+;;     |
+;;     }
+;;     becomes {|}
+;;  c) refresh smartparens' :post-handlers, so SPC and RET expansions work even
+;;     after a backspace.
+;;  d) properly delete smartparen pairs when they are encountered, without the
+;;     need for strict mode.
+;;  e) do none of this when inside a string
+(advice-add #'delete-backward-char :override #'+default--delete-backward-char-a)
+
+;; HACK Makes `newline-and-indent' continue comments (and more reliably).
+;;      Consults `doom-point-in-comment-functions' to detect a commented region
+;;      and uses that mode's `comment-line-break-function' to continue comments.
+;;      If neither exists, it will fall back to the normal behavior of
+;;      `newline-and-indent'.
+;;
+;;      We use an advice here instead of a remapping because many modes define
+;;      and remap to their own newline-and-indent commands, and tackling all
+;;      those cases was judged to be more work than dealing with the edge cases
+;;      on a case by case basis.
+(defadvice! +default--newline-indent-and-continue-comments-a (&rest _)
+  "A replacement for `newline-and-indent'.
+
+Continues comments if executed from a commented line. Consults
+`doom-point-in-comment-functions' to determine if in a comment."
+  :before-until #'newline-and-indent
+  (interactive "*")
+  (when (and +default-want-RET-continue-comments
+             (doom-point-in-comment-p)
+             (fboundp comment-line-break-function))
+    (funcall comment-line-break-function nil)
+    t))
 
 ;; This section is dedicated to "fixing" certain keys so that they behave
 ;; sensibly (and consistently with similar contexts).
@@ -259,6 +283,7 @@
         "s-c" (if (featurep 'evil) #'evil-yank #'copy-region-as-kill)
         "s-v" #'yank
         "s-s" #'save-buffer
+        "s-x" #'execute-extended-command
         :v "s-x" #'kill-region
         ;; Buffer-local font scaling
         "s-+" #'doom/reset-font-size
@@ -266,7 +291,7 @@
         "s--" #'doom/decrease-font-size
         ;; Conventional text-editing keys & motions
         "s-a" #'mark-whole-buffer
-        "s-/" (λ! (save-excursion (comment-line 1)))
+        "s-/" (cmd! (save-excursion (comment-line 1)))
         :n "s-/" #'evilnc-comment-or-uncomment-lines
         :v "s-/" #'evilnc-comment-operator
         :gi  [s-backspace] #'doom/backward-kill-to-bol-and-indent
@@ -324,14 +349,14 @@
   "db"   #'doom/report-bug
   "dc"   #'doom/goto-private-config-file
   "dC"   #'doom/goto-private-init-file
-  "dd"   #'doom/toggle-debug-mode
+  "dd"   #'doom-debug-mode
   "df"   #'doom/help-faq
   "dh"   #'doom/help
   "dl"   #'doom/help-search-load-path
   "dL"   #'doom/help-search-loaded-files
   "dm"   #'doom/help-modules
   "dn"   #'doom/help-news
-  "dN"   #'doom/help-news-search
+  "dN"   #'doom/help-search-news
   "dpc"  #'doom/help-package-config
   "dpd"  #'doom/goto-private-packages-file
   "dph"  #'doom/help-package-homepage
@@ -382,10 +407,15 @@
 
   ;; A Doom convention where C-s on popups and interactive searches will invoke
   ;; ivy/helm for their superior filtering.
-  (define-key! :keymaps +default-minibuffer-maps
-    "C-s" (if (featurep! :completion ivy)
-              #'counsel-minibuffer-history
-            #'helm-minibuffer-history))
+  (when-let (command (cond ((featurep! :completion ivy)
+                            #'counsel-minibuffer-history)
+                           ((featurep! :completion helm)
+                            #'helm-minibuffer-history)))
+    (define-key!
+      :keymaps (append +default-minibuffer-maps
+                       (when (featurep! :editor evil +everywhere)
+                         '(evil-ex-completion-map)))
+      "C-s" command))
 
   ;; Smarter C-a/C-e for both Emacs and Evil. C-a will jump to indentation.
   ;; Pressing it again will send you to the true bol. Same goes for C-e, except

@@ -50,11 +50,13 @@ stored in `persp-save-dir'.")
           (persp-mode +1)))))
   :config
   (setq persp-autokill-buffer-on-remove 'kill-weak
+        persp-reset-windows-on-nil-window-conf nil
         persp-nil-hidden t
         persp-auto-save-fname "autosave"
         persp-save-dir (concat doom-etc-dir "workspaces/")
         persp-set-last-persp-for-new-frames t
         persp-switch-to-added-buffer nil
+        persp-kill-foreign-buffer-behaviour 'kill
         persp-remove-buffers-from-nil-persp-behaviour nil
         persp-auto-resume-time -1 ; Don't auto-load on startup
         persp-auto-save-opt (if noninteractive 0 1)) ; auto-save on kill
@@ -78,11 +80,10 @@ stored in `persp-save-dir'.")
         (let (persp-before-switch-functions)
           ;; The default perspective persp-mode creates is special and doesn't
           ;; represent a real persp object, so buffers can't really be assigned
-          ;; to it, among other quirks. We hide the nil persp...
+          ;; to it, among other quirks, so we get rid of it...
           (when (equal (car persp-names-cache) persp-nil-name)
             (pop persp-names-cache))
-          ;; ...and create a *real* main workspace to fill this role, and hide
-          ;; the nil perspective.
+          ;; ...and create a *real* main workspace to fill this role.
           (unless (or (persp-get-by-name +workspaces-main)
                       ;; Start from 2 b/c persp-mode counts the nil workspace
                       (> (hash-table-count *persp-hash*) 2))
@@ -180,7 +181,10 @@ stored in `persp-save-dir'.")
             ("xt" counsel-projectile-switch-project-action-run-term "invoke term from project root")
             ("X" counsel-projectile-switch-project-action-org-capture "org-capture into project")))
 
-  (add-hook 'projectile-after-switch-project-hook #'+workspaces-switch-to-project-h)
+  (when (featurep! :completion helm)
+    (after! helm-projectile
+      (setcar helm-source-projectile-projects-actions
+              '("Switch to Project" . +workspaces-switch-to-project-h))))
 
   ;; Fix #1973: visual selection surviving workspace changes
   (add-hook 'persp-before-deactivate-functions #'deactivate-mark)

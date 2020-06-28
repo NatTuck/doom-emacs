@@ -105,9 +105,11 @@ in some cases."
           (doom-region-end)))
         (thing
          (thing-at-point thing t))
-        ((require 'xref nil t)
+        ((and (require 'xref nil t) (not (eq (xref-find-backend) 'eglot)))
          ;; A little smarter than using `symbol-at-point', though in most cases,
          ;; xref ends up using `symbol-at-point' anyway.
+         ;; "Most cases" doesn't cover 'eglot so we manually exclude it.
+         ;; See discussion in https://github.com/joaotavora/eglot/issues/503
          (xref-backend-identifier-at-point (xref-find-backend)))
         (prompt
          (read-string (if (stringp prompt) prompt "")))))
@@ -117,7 +119,7 @@ in some cases."
 ;;; Commands
 
 (defun doom--bol-bot-eot-eol (&optional pos)
-  (save-excursion
+  (save-mark-and-excursion
     (when pos
       (goto-char pos))
     (let* ((bol (if visual-line-mode
@@ -155,7 +157,7 @@ in some cases."
   "Jump between the indentation column (first non-whitespace character) and the
 beginning of the line. The opposite of
 `doom/forward-to-last-non-comment-or-eol'."
-  (interactive "d")
+  (interactive "^d")
   (let ((pt (or point (point))))
     (cl-destructuring-bind (bol bot _eot _eol)
         (doom--bol-bot-eot-eol pt)
@@ -177,7 +179,7 @@ beginning of the line. The opposite of
 (defun doom/forward-to-last-non-comment-or-eol (&optional point)
   "Jumps between the last non-blank, non-comment character in the line and the
 true end of the line. The opposite of `doom/backward-to-bol-or-indent'."
-  (interactive "d")
+  (interactive "^d")
   (let ((pt (or point (point))))
     (cl-destructuring-bind (_bol _bot eot eol)
         (doom--bol-bot-eot-eol pt)
@@ -260,15 +262,9 @@ opposite indentation style."
 
 Respects `require-final-newline'."
   (interactive)
-  (goto-char (point-max))
-  (skip-chars-backward " \t\n\v")
-  (when (looking-at "\n\\(\n\\|\\'\\)")
-    (forward-char 1))
-  (when require-final-newline
-    (unless (bolp)
-      (insert "\n")))
-  (when (looking-at "\n+")
-    (replace-match "")))
+  (save-excursion
+    (goto-char (point-max))
+    (delete-blank-lines)))
 
 ;;;###autoload
 (defun doom/dos2unix ()
