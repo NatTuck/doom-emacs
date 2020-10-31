@@ -37,10 +37,17 @@
           :desc "Tomorrow"       "m" #'org-roam-dailies-tomorrow
           :desc "Yesterday"      "y" #'org-roam-dailies-yesterday))
   :config
-  (setq org-roam-directory (expand-file-name (or org-roam-directory "roam")
-                                             org-directory)
-        org-roam-verbose nil  ; https://youtu.be/fn4jIlFwuLU
-        org-roam-buffer-window-parameters '((no-delete-other-windows . t)) ; make org-roam buffer sticky
+  (setq org-roam-directory
+        (file-name-as-directory
+         (file-truename
+          (expand-file-name (or org-roam-directory "roam")
+                            org-directory)))
+        org-roam-db-location (concat doom-etc-dir "org-roam.db")
+        org-roam-verbose nil   ; https://youtu.be/fn4jIlFwuLU
+        ;; Make org-roam buffer sticky; i.e. don't replace it when opening a
+        ;; file with an *-other-window command.
+        org-roam-buffer-window-parameters '((no-delete-other-windows . t))
+        org-roam-completion-everywhere t
         org-roam-completion-system
         (cond ((featurep! :completion helm) 'helm)
               ((featurep! :completion ivy) 'ivy)
@@ -61,7 +68,7 @@
              (org-roam-buffer--get-create)))))
 
   ;; Hide the mode line in the org-roam buffer, since it serves no purpose. This
-  ;; makes it easier to distinguish among other org buffers.
+  ;; makes it easier to distinguish from other org buffers.
   (add-hook 'org-roam-buffer-prepare-hook #'hide-mode-line-mode))
 
 
@@ -69,10 +76,3 @@
 ;; detected), we can safely chain `org-roam-protocol' to it.
 (use-package! org-roam-protocol
   :after org-protocol)
-
-
-(use-package! company-org-roam
-  :when (featurep! :completion company)
-  :after org-roam
-  :config
-  (set-company-backend! 'org-mode '(company-org-roam company-yasnippet company-dabbrev)))

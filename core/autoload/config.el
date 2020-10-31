@@ -4,10 +4,6 @@
 (defvar doom-bin (concat doom-bin-dir "doom"))
 
 ;;;###autoload
-(defvar doom-reload-hook nil
-  "A list of hooks to run when `doom/reload' is called.")
-
-;;;###autoload
 (defvar doom-reloading-p nil
   "TODO")
 
@@ -55,19 +51,18 @@ And jumps to your `doom!' block."
 
 (defmacro doom--if-compile (command on-success &optional on-failure)
   (declare (indent 2))
-  (let ((windowsym (make-symbol "doom-sync-window")))
-    `(with-current-buffer (compile ,command t)
-       (let ((,windowsym (get-buffer-window (current-buffer))))
-         (select-window ,windowsym)
-         (add-hook
-          'compilation-finish-functions
-          (lambda (_buf status)
-            (if (equal status "finished\n")
-                (progn
-                  (delete-window ,windowsym)
-                  ,on-success)
-              ,on-failure))
-          nil 'local)))))
+  `(with-current-buffer (compile ,command t)
+     (let ((w (get-buffer-window (current-buffer))))
+       (select-window w)
+       (add-hook
+        'compilation-finish-functions
+        (lambda (_buf status)
+          (if (equal status "finished\n")
+              (progn
+                (delete-window w)
+                ,on-success)
+            ,on-failure))
+        nil 'local))))
 
 ;;;###autoload
 (defun doom/reload ()
@@ -77,7 +72,7 @@ This is experimental! It will try to do as `bin/doom sync' does, but from within
 this Emacs session. i.e. it reload autoloads files (if necessary), reloads your
 package list, and lastly, reloads your private config.el.
 
-Runs `doom-reload-hook' afterwards."
+Runs `doom-after-reload-hook' afterwards."
   (interactive)
   (require 'core-cli)
   (when (and IS-WINDOWS (file-exists-p doom-env-file))
@@ -87,19 +82,20 @@ Runs `doom-reload-hook' afterwards."
   (mapc #'require (cdr doom-incremental-packages))
   (doom--if-compile (format "%s sync -e" doom-bin)
       (let ((doom-reloading-p t))
+        (run-hook-wrapped 'doom-before-reload-hook #'doom-try-run-hook)
         (doom-initialize 'force)
         (with-demoted-errors "PRIVATE CONFIG ERROR: %s"
           (general-auto-unbind-keys)
           (unwind-protect
               (doom-initialize-modules 'force)
             (general-auto-unbind-keys t)))
-        (run-hook-wrapped 'doom-reload-hook #'doom-try-run-hook)
+        (run-hook-wrapped 'doom-after-reload-hook #'doom-try-run-hook)
         (message "Config successfully reloaded!"))
     (user-error "Failed to reload your config")))
 
 ;;;###autoload
 (defun doom/reload-autoloads ()
-  "Reload only `doom-autoload-file' and `doom-package-autoload-file'.
+  "Reload only `doom-autoloads-file' and `doom-package-autoload-file'.
 
 This is much faster and safer than `doom/reload', but not as comprehensive. This
 reloads your package and module visibility, but does not install new packages or

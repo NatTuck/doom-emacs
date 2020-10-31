@@ -11,12 +11,9 @@
     (csharp-mode     :lang csharp)
     (clojure-mode    :lang clojure)
     (clojurescript-mode :lang clojure)
-    (graphql-mode    :lang data)
-    (toml-mode       :lang data)
-    (json-mode       :lang data)
-    (yaml-mode       :lang data)
+    (json-mode       :lang json)
+    (yaml-mode       :lang yaml)
     (csv-mode        :lang data)
-    (dhall-mode      :lang data)
     (erlang-mode     :lang erlang)
     (elixir-mode     :lang elixir)
     (elm-mode        :lang elm)
@@ -193,7 +190,7 @@ selection of all minor-modes, active or not."
          "troubleshooting.org"
          "tutorials.org"
          "faq.org")
-   2 t initial-input
+   3 t initial-input
    (mapcar (lambda (x)
              (setcar x (concat "Doom Modules > " (car x)))
              x)
@@ -633,7 +630,11 @@ config blocks in your private config."
   (unless (executable-find "rg")
     (user-error "Can't find ripgrep on your system"))
   (if (fboundp 'counsel-rg)
-      (let ((counsel-rg-base-command (append counsel-rg-base-command dirs)))
+      (let ((counsel-rg-base-command
+             (if (stringp counsel-rg-base-command)
+                 (format counsel-rg-base-command
+                         (concat "%s " (mapconcat #'shell-quote-argument dirs " ")))
+               (append counsel-rg-base-command dirs))))
         (counsel-rg query nil "-Lz" prompt))
     ;; TODO Add helm support?
     (grep-find
@@ -661,6 +662,7 @@ Uses the symbol at point or the current selection, if available."
   (doom--help-search
    (cl-loop for (file . _) in (cl-remove-if-not #'stringp load-history :key #'car)
             for filebase = (file-name-sans-extension file)
-            if (file-exists-p! (format "%s.el" filebase))
+            if (file-exists-p! (or (format "%s.el.gz" filebase)
+                                   (format "%s.el" filebase)))
             collect it)
    query "Search loaded files: "))

@@ -34,8 +34,10 @@
        :desc "Evaluate buffer/region"                "e"   #'+eval/buffer-or-region
        :desc "Evaluate & replace region"             "E"   #'+eval/region-and-replace
        :desc "Format buffer/region"                  "f"   #'+format/region-or-buffer
+       :desc "Find implementations"                  "i"   #'+lookup/implementations
        :desc "Jump to documentation"                 "k"   #'+lookup/documentation
        :desc "Send to repl"                          "s"   #'+eval/send-region-to-repl
+       :desc "Find type definition"                  "t"   #'+lookup/type-definition
        :desc "Delete trailing whitespace"            "w"   #'delete-trailing-whitespace
        :desc "Delete trailing newlines"              "W"   #'doom/delete-trailing-newlines
        :desc "List errors"                           "x"   #'flymake-show-diagnostics-buffer
@@ -43,10 +45,9 @@
         :desc "List errors"                         "x"   #'flycheck-list-errors)
        (:when (and (featurep! :tools lsp) (not (featurep! :tools lsp +eglot)))
         :desc "LSP Code actions"                      "a"   #'lsp-execute-code-action
-        :desc "LSP Organize imports"                  "i"   #'lsp-organize-imports
+        :desc "LSP Organize imports"                  "o"   #'lsp-organize-imports
         :desc "LSP Rename"                            "r"   #'lsp-rename
-        (:after lsp-mode
-         :desc "LSP"                                   "l"   lsp-command-map)
+        :desc "LSP"                                   "l"   #'+default/lsp-command-map
         (:when (featurep! :completion ivy)
          :desc "Jump to symbol in current workspace" "j"   #'lsp-ivy-workspace-symbol
          :desc "Jump to symbol in any workspace"     "J"   #'lsp-ivy-global-workspace-symbol)
@@ -55,10 +56,8 @@
          :desc "Jump to symbol in any workspace"     "J"   #'helm-lsp-global-workspace-symbol))
        (:when (featurep! :tools lsp +eglot)
         :desc "LSP Execute code action"              "a" #'eglot-code-actions
-        :desc "LSP Format buffer/region"             "F" #'eglot-format
         :desc "LSP Rename"                           "r" #'eglot-rename
-        :desc "LSP Find declaration"                 "j" #'eglot-find-declaration
-        :desc "LSP Find implementation"              "J" #'eglot-find-implementation))
+        :desc "LSP Find declaration"                 "j" #'eglot-find-declaration))
 
       ;;; <leader> f --- file
       (:prefix-map ("f" . "file")
@@ -118,13 +117,14 @@
        :desc "Look up in all docsets"       "K" #'+lookup/in-all-docsets
        :desc "Search project"               "p" #'+default/search-project
        :desc "Search other project"         "P" #'+default/search-other-project
-       :desc "Search buffer"                "s" #'swiper-isearch
+       :desc "Search buffer"                "s" #'+default/search-buffer
        :desc "Search buffer for thing at point" "S" #'swiper-isearch-thing-at-point
        :desc "Dictionary"                   "t" #'+lookup/dictionary-definition
        :desc "Thesaurus"                    "T" #'+lookup/synonyms)
 
       ;;; <leader> i --- insert
       (:prefix-map ("i" . "insert")
+       :desc "Emoji"                         "e"   #'emojify-insert-emoji
        :desc "Current file name"             "f"   #'+default/insert-file-path
        :desc "Current file path"             "F"   (cmd!! #'+default/insert-file-path t)
        :desc "Snippet"                       "s"   #'yas-insert-snippet
@@ -140,8 +140,8 @@
         (cond ((featurep! :completion ivy)   #'ivy-bibtex)
               ((featurep! :completion helm)  #'helm-bibtex)))
 
-       :desc "Toggle org-clock"               "c" #'+org/toggle-clock
-       :desc "Cancel org-clock"               "C" #'org-clock-cancel
+       :desc "Toggle last org-clock"          "c" #'+org/toggle-last-clock
+       :desc "Cancel current org-clock"       "C" #'org-clock-cancel
        :desc "Open deft"                      "d" #'deft
        (:when (featurep! :lang org +noter)
         :desc "Org noter"                    "e" #'org-noter)
@@ -161,8 +161,9 @@
        :desc "Org export to clipboard as RTF" "Y" #'+org/export-to-clipboard-as-rich-text
        (:when (featurep! :lang org +journal)
         (:prefix ("j" . "journal")
-         :desc "New Entry"      "j" #'org-journal-new-entry
-         :desc "Search Forever" "s" #'org-journal-search-forever))
+         :desc "New Entry"           "j" #'org-journal-new-entry
+         :desc "New Scheduled Entry" "J" #'org-journal-new-scheduled-entry
+         :desc "Search Forever"      "s" #'org-journal-search-forever))
        (:when (featurep! :lang org +roam)
         (:prefix ("r" . "roam")
          :desc "Switch to buffer"              "b" #'org-roam-switch-to-buffer
@@ -205,7 +206,7 @@
        (:when (featurep! :term eshell)
         :desc "Toggle eshell popup"           "e" #'+eshell/toggle
         :desc "Open eshell here"              "E" #'+eshell/here)
-       (:when (featurep! :tools macos)
+       (:when (featurep! :os macos)
         :desc "Reveal in Finder"           "o" #'+macos/reveal-in-finder
         :desc "Reveal project in Finder"   "O" #'+macos/reveal-project-in-finder
         :desc "Send to Transmit"           "u" #'+macos/send-to-transmit
@@ -266,6 +267,8 @@
       ;;; <leader> t --- toggle
       (:prefix-map ("t" . "toggle")
        :desc "Big mode"                     "b" #'doom-big-font-mode
+       (:when (featurep! :ui fill-column)
+        :desc "Fill Column Indicator"       "c" #'+fill-column/toggle)
        :desc "Flymake"                      "f" #'flymake-mode
        :desc "Frame fullscreen"             "F" #'toggle-frame-fullscreen
        :desc "Indent style"                 "I" #'doom/toggle-indent-style
@@ -278,10 +281,12 @@
        (:when (featurep! :ui minimap)
         :desc "Minimap mode"               "m" #'minimap-mode)
        (:when (featurep! :lang org +present)
-        :desc "org-tree-slide mode"        "p" #'+org-present/start)
+        :desc "org-tree-slide mode"        "p" #'org-tree-slide-mode)
        :desc "Read-only mode"               "r" #'read-only-mode
-       (:when (featurep! :checkers spell)
-        :desc "Flyspell"                   "s" #'flyspell-mode)
+       (:when (and (featurep! :checkers spell) (not (featurep! :checkers spell +flyspell)))
+        :desc "Spell checker"              "s" #'spell-fu-mode)
+       (:when (featurep! :checkers spell +flyspell)
+        :desc "Spell checker"              "s" #'flyspell-mode)
        (:when (featurep! :lang org +pomodoro)
         :desc "Pomodoro timer"             "t" #'org-pomodoro)
        (:when (featurep! :ui zen)
@@ -419,16 +424,9 @@
 (map! "C-'" #'imenu
 
       ;;; Text scaling
-      [C-mouse-4] #'text-scale-increase
-      [C-mouse-5] #'text-scale-decrease
-      [C-down-mouse-2] (cmd! (text-scale-set 0))
       "M-+" #'doom/reset-font-size
       "M-=" #'doom/increase-font-size
       "M--" #'doom/decrease-font-size
-
-      ;;; newlines
-      [remap newline]  #'newline-and-indent
-      "C-j"            #'+default/newline
 
       ;;; search
       (:when (featurep! :completion ivy)

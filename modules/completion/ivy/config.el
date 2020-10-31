@@ -46,6 +46,11 @@ results buffer.")
     [remap persp-switch-to-buffer]        #'+ivy/switch-workspace-buffer
     [remap evil-show-jumps]               #'+ivy/jump-list)
   :config
+  ;; The default sorter is much to slow and the default for `ivy-sort-max-size'
+  ;; is way too big (30,000). Turn it down so big repos affect project
+  ;; navigation less.
+  (setq ivy-sort-max-size 7500)
+
   ;; Counsel changes a lot of ivy's state at startup; to control for that, we
   ;; need to load it as early as possible. Some packages (like `ivy-prescient')
   ;; require this.
@@ -69,7 +74,7 @@ results buffer.")
   ;; Highlight each ivy candidate including the following newline, so that it
   ;; extends to the right edge of the window
   (setf (alist-get 't ivy-format-functions-alist)
-        #'ivy-format-function-line)
+        #'+ivy-format-function-line-or-arrow)
 
   ;; Integrate `ivy' with `better-jumper'; ensure a jump point is registered
   ;; before jumping to new locations with ivy
@@ -220,7 +225,7 @@ evil-ex-specific constructs, so we disable it solely in evil-ex."
              (listp counsel-rg-base-command)
              (member "--path-separator" counsel-rg-base-command))
     (setf (cadr (member "--path-separator" counsel-rg-base-command))
-          "//"))
+          "/"))
 
   ;; Integrate with `helpful'
   (setq counsel-describe-function-function #'helpful-callable
@@ -278,11 +283,11 @@ evil-ex-specific constructs, so we disable it solely in evil-ex."
     "Change `counsel-file-jump' to use fd or ripgrep, if they are available."
     :override #'counsel--find-return-list
     (cl-destructuring-bind (find-program . args)
-        (cond ((executable-find doom-projectile-fd-binary)
-               (append (list doom-projectile-fd-binary
-                             "--color=never" "-E" ".git"
-                             "--type" "file" "--type" "symlink" "--follow")
-                       (if IS-WINDOWS '("--path-separator=/"))))
+        (cond ((when-let (fd (executable-find (or doom-projectile-fd-binary "fd")))
+                 (append (list fd
+                               "--color=never" "-E" ".git"
+                               "--type" "file" "--type" "symlink" "--follow")
+                         (if IS-WINDOWS '("--path-separator=/")))))
               ((executable-find "rg")
                (append (list "rg" "--files" "--follow" "--color=never" "--hidden" "--no-messages")
                        (cl-loop for dir in projectile-globally-ignored-directories
@@ -296,10 +301,9 @@ evil-ex-specific constructs, so we disable it solely in evil-ex."
        (cons find-program args)
        (lambda ()
          (goto-char (point-min))
-         (let ((offset (if (member find-program (list "rg" doom-projectile-fd-binary)) 0 2))
-               files)
+         (let (files)
            (while (< (point) (point-max))
-             (push (buffer-substring (+ offset (line-beginning-position)) (line-end-position))
+             (push (buffer-substring (line-beginning-position) (line-end-position))
                    files)
              (forward-line 1))
            (nreverse files)))))))
@@ -356,7 +360,7 @@ evil-ex-specific constructs, so we disable it solely in evil-ex."
     (setf (alist-get fn ivy-posframe-display-functions-alist)
           #'ivy-display-function-fallback))
 
-  (add-hook 'doom-reload-hook #'posframe-delete-all))
+  (add-hook 'doom-after-reload-hook #'posframe-delete-all))
 
 
 (use-package! flx
@@ -370,6 +374,7 @@ evil-ex-specific constructs, so we disable it solely in evil-ex."
   :when (featurep! +prescient)
   :hook (ivy-mode . ivy-prescient-mode)
   :hook (ivy-prescient-mode . prescient-persist-mode)
+  :commands +ivy-prescient-non-fuzzy
   :init
   (setq prescient-filter-method
         (if (featurep! +fuzzy)
@@ -377,9 +382,11 @@ evil-ex-specific constructs, so we disable it solely in evil-ex."
           '(literal regexp initialism)))
   :config
   (setq ivy-prescient-sort-commands
-        '(:not swiper swiper-isearch ivy-switch-buffer counsel-grep
-               counsel-git-grep counsel-ag counsel-rg counsel-imenu
-               counsel-yank-pop counsel-recentf counsel-buffer-or-recentf)
+        '(:not swiper swiper-isearch ivy-switch-buffer
+          lsp-ivy-workspace-symbol ivy-resume ivy--restore-session
+          counsel-grep counsel-git-grep counsel-rg counsel-ag
+          counsel-ack counsel-fzf counsel-pt counsel-imenu
+          counsel-yank-pop counsel-recentf counsel-buffer-or-recentf)
         ivy-prescient-retain-classic-highlighting t)
   (defun +ivy-prescient-non-fuzzy (str)
     (let ((prescient-filter-method '(literal regexp)))
